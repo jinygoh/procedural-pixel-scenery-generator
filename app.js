@@ -1448,7 +1448,7 @@ function spawnBoulder(mainSceneScrollX) {
 function drawSingleBoulderComponent(centerX, componentBaseY, width, height, shapeSeed, baseHue, baseSaturation, baseLightness, isForeground = false) { // Added default for isForeground
     // componentBaseY is the y-coordinate of the bottom of this component.
     // We draw from componentBaseY - height up to componentBaseY.
-    const startDrawX = Math.floor(centerX - width / 2); // Restored definition
+    const startDrawX = Math.floor(centerX - width / 2); // Ensure single definition
     const endDrawX = Math.ceil(centerX + width / 2);
     const componentTopY = Math.floor(componentBaseY - height);
     const componentBottomY = Math.ceil(componentBaseY);
