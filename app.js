@@ -1380,8 +1380,8 @@ function spawnBoulder(mainSceneScrollX) {
 
     const terrainSurfaceY = getTerrainHeightAt(worldX, mainSceneScrollX);
     // Avoid spawning boulders too low or too high on sharp peaks for main landscape.
-    // RENDER_HEIGHT * 0.55 is 240 * 0.55 = 132. Boulders won't spawn if terrain Y is less than 132 (higher on screen).
-    if (terrainSurfaceY > RENDER_HEIGHT - 5 || terrainSurfaceY < RENDER_HEIGHT * 0.55) {
+    // RENDER_HEIGHT * 0.65 is 240 * 0.65 = 156. Boulders won't spawn if terrain Y is less than 156 (higher on screen).
+    if (terrainSurfaceY > RENDER_HEIGHT - 5 || terrainSurfaceY < RENDER_HEIGHT * 0.65) {
         return null;
     }
 
