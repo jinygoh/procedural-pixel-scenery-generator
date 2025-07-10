@@ -568,7 +568,8 @@ function spawnPlant(mainSceneScrollX) {
     const terrainSurfaceY = getTerrainHeightAt(worldX, mainSceneScrollX);
 
     // Avoid spawning plants too low or too high on sharp peaks.
-    if (terrainSurfaceY > RENDER_HEIGHT - 10 || terrainSurfaceY < RENDER_HEIGHT * 0.40) { // Keep this threshold
+    // RENDER_HEIGHT * 0.55 is 240 * 0.55 = 132. Plants won't spawn if terrain Y is less than 132 (higher on screen).
+    if (terrainSurfaceY > RENDER_HEIGHT - 10 || terrainSurfaceY < RENDER_HEIGHT * 0.55) {
          return null;
     }
 
@@ -602,7 +603,7 @@ function spawnPlant(mainSceneScrollX) {
     }
 
     // Ensure plant spawns relatively close to the river's Y level
-    const MAX_Y_DIST_FROM_RIVER_PLANT = 40; // Max vertical distance from river center
+    const MAX_Y_DIST_FROM_RIVER_PLANT = 25; // Max vertical distance from river center
     if (Math.abs(terrainSurfaceY - riverCenterY) > MAX_Y_DIST_FROM_RIVER_PLANT) {
         return null; // Too far vertically from the river
     }
@@ -850,7 +851,7 @@ const FAUNA_OFFSCREEN_BUFFER = 100; // Buffer distance off-screen before despawn
 const FAUNA_TYPES = {
     FLOATER: 'FLOATER',
     BIRD_FLOCKER: 'BIRD_FLOCKER',
-    CRAWLER: 'CRAWLER',
+    // CRAWLER: 'CRAWLER', // Removed CRAWLER
 };
 
 // Fauna color palette, evolves over time.
@@ -922,37 +923,8 @@ function spawnFauna(currentLayerScrollX) {
         animal.maxSpeed = Utils.randomFloat(20, 35); // Adjusted bird speed
         animal.maxForce = Utils.randomFloat(0.2, 0.6);
         animal.perceptionRadius = Utils.randomFloat(25, 50);
-    } else if (animal.type === FAUNA_TYPES.CRAWLER) {
-        animal.size = Utils.randomFloat(2, 4); // Segment size
-        animal.numSegments = Utils.randomInt(5, 10);
-        animal.segmentSpacing = animal.size * 0.8;
-        animal.segments = []; // Array to store [x,y] for each segment relative to animal.worldX, animal.y
-        animal.y = getTerrainHeightAt(animal.worldX, currentLayerScrollX); // Place on terrain
-
-        // Check if valid spawn location (not in river or too steep/high)
-        if (animal.y > RENDER_HEIGHT - 5 || animal.y < RENDER_HEIGHT * 0.40) return null;
-
-        const slopeCheckOffset = 2;
-        const heightLeft = getTerrainHeightAt(animal.worldX - slopeCheckOffset, currentLayerScrollX);
-        const heightRight = getTerrainHeightAt(animal.worldX + slopeCheckOffset, currentLayerScrollX);
-        if (Math.abs(animal.y - heightLeft) > 4 || Math.abs(animal.y - heightRight) > 4) return null;
-
-        const riverCenterYNoise = PerlinNoise.noise(animal.worldX * RIVER_NOISE_SCALE, riverPathSeed + masterTime * 0.01);
-        let riverCenterY = RIVER_CENTER_Y_BASE + riverCenterYNoise * RIVER_CENTER_Y_VARIATION;
-        riverCenterY = Math.max(riverCenterY, animal.y + currentRiverWidth * 0.3);
-        riverCenterY = Math.min(riverCenterY, RENDER_HEIGHT - currentRiverWidth);
-        const halfRiverWidth = currentRiverWidth / 2;
-        const riverTopEdge = riverCenterY - halfRiverWidth;
-        const riverBedFinalY = Math.max(animal.y + RIVER_BED_DEPTH, riverTopEdge);
-        if (animal.y >= riverTopEdge && animal.y <= riverBedFinalY + halfRiverWidth*2) return null;
-
-        for (let i = 0; i < animal.numSegments; i++) {
-            animal.segments.push({ x: -i * animal.segmentSpacing, y: 0 }); // Initial straight line behind head
-        }
-        animal.vx = Utils.randomFloat(5, 15) * (spawnFromLeft ? 1 : -1); // Crawlers are slower
-        animal.phaseOffset = Utils.randomFloat(0, Math.PI * 2); // For body undulation
     }
-
+    // Removed CRAWLER else if block
     return animal;
 }
 
@@ -1202,37 +1174,14 @@ function drawFauna(currentScrollX, deltaTime) {
             case FAUNA_TYPES.BIRD_FLOCKER:
                 drawBirdFlockerShape(animal, screenX, dynamicHue);
                 break;
-            case FAUNA_TYPES.CRAWLER:
-                drawCrawlerShape(animal, currentScrollX, dynamicHue); // Pass currentScrollX for segment drawing
-                break;
+            // Removed CRAWLER case
         }
     }
 }
 
 // --- Individual Fauna Drawing Functions ---
 
-function drawCrawlerShape(crawler, currentScrollX, hue) {
-    const segmentSize = Math.max(1, Math.floor(crawler.size));
-    for (let i = 0; i < crawler.numSegments; i++) {
-        const segment = crawler.segments[i];
-        const segScreenX = Math.floor(segment.x - currentScrollX);
-        const segScreenY = Math.floor(segment.y);
-
-        if (segScreenX + segmentSize < 0 || segScreenX - segmentSize > RENDER_WIDTH ||
-            segScreenY + segmentSize < 0 || segScreenY - segmentSize > RENDER_HEIGHT) {
-            continue;
-        }
-
-        const L = Utils.lerp(faunaPalette.lightnessMin, faunaPalette.lightnessMax, (i / crawler.numSegments) * 0.5 + 0.25 + Math.sin(masterTime * 5 + i*0.5 + crawler.phaseOffset)*0.1);
-        const S = faunaPalette.saturation;
-        ctx.fillStyle = Utils.hslToRgbString((hue + i * 5) % 360, S, Utils.clamp(L, 30, 80) );
-
-        // Draw segment as a circle
-        ctx.beginPath();
-        ctx.arc(segScreenX, segScreenY, segmentSize, 0, Math.PI * 2);
-        ctx.fill();
-    }
-}
+// Removed drawCrawlerShape function
 
 /** Draws a Bird Flocker shape. Simple V-shape with animated wings. */
 function drawBirdFlockerShape(bird, screenX, hue) {
@@ -1355,7 +1304,8 @@ function spawnBoulder(mainSceneScrollX) {
 
     const terrainSurfaceY = getTerrainHeightAt(worldX, mainSceneScrollX);
     // Avoid spawning boulders too low or too high on sharp peaks for main landscape.
-    if (terrainSurfaceY > RENDER_HEIGHT - 5 || terrainSurfaceY < RENDER_HEIGHT * 0.40) {
+    // RENDER_HEIGHT * 0.55 is 240 * 0.55 = 132. Boulders won't spawn if terrain Y is less than 132 (higher on screen).
+    if (terrainSurfaceY > RENDER_HEIGHT - 5 || terrainSurfaceY < RENDER_HEIGHT * 0.55) {
         return null;
     }
 
@@ -1383,7 +1333,7 @@ function spawnBoulder(mainSceneScrollX) {
     }
 
     // Ensure boulder spawns relatively close to the river's Y level
-    const MAX_Y_DIST_FROM_RIVER_BOULDER = 40; // Max vertical distance from river center
+    const MAX_Y_DIST_FROM_RIVER_BOULDER = 25; // Max vertical distance from river center
     if (Math.abs(terrainSurfaceY - riverCenterY) > MAX_Y_DIST_FROM_RIVER_BOULDER) {
         return null; // Too far vertically from the river
     }
