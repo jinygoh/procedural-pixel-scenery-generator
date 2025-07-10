@@ -601,6 +601,11 @@ function spawnPlant(mainSceneScrollX) {
         return null; // Don't spawn normal plants in river
     }
 
+    // Ensure plant spawns relatively close to the river's Y level
+    const MAX_Y_DIST_FROM_RIVER_PLANT = 40; // Max vertical distance from river center
+    if (Math.abs(terrainSurfaceY - riverCenterY) > MAX_Y_DIST_FROM_RIVER_PLANT) {
+        return null; // Too far vertically from the river
+    }
 
     const plantTypeKeys = Object.keys(PLANT_TYPES);
     const type = Utils.randomElement(plantTypeKeys);
@@ -724,7 +729,7 @@ function drawFlatCapMushroom(plant, screenX, hue) {
 
 function drawTendrilPlant(plant, screenX, hue) {
     const numTendrils = Utils.randomInt(3, 6);
-    const tendrilMaxLength = plant.size * Utils.randomFloat(2.0, 4.0);
+    const tendrilMaxLength = plant.size * Utils.randomFloat(1.0, 2.0); // Reduced tendril length
     const baseScreenY = Math.floor(plant.y + plant.size * 0.7); // Base slightly above ground for root point
 
     for (let i = 0; i < numTendrils; i++) {
@@ -1374,7 +1379,13 @@ function spawnBoulder(mainSceneScrollX) {
     const riverTopEdge = riverCenterY - halfRiverWidth;
     const riverBedFinalY = Math.max(terrainSurfaceY + RIVER_BED_DEPTH, riverTopEdge);
     if (terrainSurfaceY >= riverTopEdge && terrainSurfaceY <= riverBedFinalY + halfRiverWidth * 2) {
-        return null;
+        return null; // Don't spawn boulders in the river
+    }
+
+    // Ensure boulder spawns relatively close to the river's Y level
+    const MAX_Y_DIST_FROM_RIVER_BOULDER = 40; // Max vertical distance from river center
+    if (Math.abs(terrainSurfaceY - riverCenterY) > MAX_Y_DIST_FROM_RIVER_BOULDER) {
+        return null; // Too far vertically from the river
     }
 
     const size = Utils.randomFloat(BOULDER_MIN_SIZE, BOULDER_MAX_SIZE);
