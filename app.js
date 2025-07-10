@@ -1105,8 +1105,6 @@ function drawFauna(currentScrollX, deltaTime) {
 
             animal.wingPhase += speed * dt * 0.5; // Flapping speed based on actual speed
         }
-        // TODO: Add CRAWLER movement logic (stick to terrain).
-            animal.wingPhase += speed * dt * 0.5; // Flapping speed based on actual speed
         } else if (animal.type === FAUNA_TYPES.CRAWLER) {
             const headWorldX = animal.worldX;
             const headWorldY = getTerrainHeightAt(headWorldX, currentScrollX) + Math.sin(masterTime * 10 + animal.phaseOffset) * animal.size * 0.3; // Undulation for head
