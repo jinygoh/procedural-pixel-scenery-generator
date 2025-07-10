@@ -506,7 +506,8 @@ const PLANT_TYPES = {
     GLOW_ORB_STALK: 'GLOW_ORB_STALK',
     CRYSTAL_CLUSTER: 'CRYSTAL_CLUSTER',
     FLAT_CAP_MUSHROOM: 'FLAT_CAP_MUSHROOM',
-    TENDRIL_PLANT: 'TENDRIL_PLANT'
+    TENDRIL_PLANT: 'TENDRIL_PLANT',
+    PULSATING_CRYSTAL_FLOWER: 'PULSATING_CRYSTAL_FLOWER'
 };
 
 // Flora color palette, evolves over time.
@@ -690,6 +691,81 @@ function drawFlora(currentScrollX) {
 }
 
 // --- Individual Plant Drawing Functions ---
+
+function drawPulsatingCrystalFlower(plant, screenX, hue) {
+    const baseSize = plant.size; // Foreground plants are already spawned larger
+    const screenY = Math.floor(plant.y + baseSize); // Base of the plant
+
+    const numPetals = 5;
+    const petalLengthBase = baseSize * 0.8;
+    const petalWidthBase = baseSize * 0.3;
+
+    const pulseCycle = masterTime * 1.5 + plant.id; // For animation timing
+    const glowPulse = (Math.sin(pulseCycle) + 1) / 2; // 0 to 1
+    const openFactor = Utils.mapRange(Math.sin(pulseCycle * 0.7), -1, 1, 0.5, 1); // Petals open and close
+
+    // Central Orb/Core
+    const coreRadius = baseSize * 0.25 * (0.8 + glowPulse * 0.4); // Pulsating core
+    const coreX = screenX;
+    const coreY = screenY - baseSize * 0.7;
+    const coreLightness = Utils.lerp(70, 95, glowPulse);
+    ctx.fillStyle = Utils.hslToRgbString(hue, floraPalette.saturation, coreLightness);
+
+    for (let dx = -Math.floor(coreRadius); dx <= Math.floor(coreRadius); dx++) {
+        for (let dy = -Math.floor(coreRadius); dy <= Math.floor(coreRadius); dy++) {
+            if (dx*dx + dy*dy <= coreRadius*coreRadius) {
+                if (coreX + dx >=0 && coreX + dx < RENDER_WIDTH && coreY + dy >=0 && coreY + dy < RENDER_HEIGHT) {
+                    ctx.fillRect(coreX + dx, coreY + dy, 1, 1);
+                }
+            }
+        }
+    }
+
+    // Crystalline Petals
+    for (let i = 0; i < numPetals; i++) {
+        const angle = (i / numPetals) * (Math.PI * 2) + (masterTime * 0.05); // Slow rotation
+
+        const petalLength = petalLengthBase * openFactor;
+        const petalWidth = petalWidthBase * Utils.mapRange(openFactor, 0.5, 1, 0.7, 1);
+
+        const tipX = coreX + Math.cos(angle) * petalLength;
+        const tipY = coreY + Math.sin(angle) * petalLength;
+
+        const petalLightness = Utils.lerp(floraPalette.lightnessMin, floraPalette.lightnessMax, (i % 2 === 0 ? 0.3 : 0.7) + glowPulse * 0.2);
+
+        ctx.beginPath();
+        ctx.moveTo(coreX, coreY);
+
+        // Control points for a slightly curved, sharp petal
+        const controlOffsetX1 = Math.cos(angle + Math.PI / 2) * petalWidth * 0.5;
+        const controlOffsetY1 = Math.sin(angle + Math.PI / 2) * petalWidth * 0.5;
+        const controlPointX1 = coreX + Math.cos(angle) * petalLength * 0.33 + controlOffsetX1;
+        const controlPointY1 = coreY + Math.sin(angle) * petalLength * 0.33 + controlOffsetY1;
+
+        const controlOffsetX2 = Math.cos(angle - Math.PI / 2) * petalWidth * 0.5;
+        const controlOffsetY2 = Math.sin(angle - Math.PI / 2) * petalWidth * 0.5;
+        const controlPointX2 = coreX + Math.cos(angle) * petalLength * 0.66 + controlOffsetX2;
+        const controlPointY2 = coreY + Math.sin(angle) * petalLength * 0.66 + controlOffsetY2;
+
+        ctx.quadraticCurveTo(controlPointX1, controlPointY1, tipX, tipY);
+        ctx.quadraticCurveTo(controlPointX2, controlPointY2, coreX, coreY);
+
+        ctx.closePath();
+
+        // For pixel art, filling pixel by pixel within this path would be better,
+        // but for simplicity and distinctness, a standard fill is used.
+        // To make it more "pixel-arty" without complex scanline conversion:
+        // one could draw multiple lines or small rects along the petal's axis.
+        // For now, let's use a solid fill for the crystal effect.
+        ctx.fillStyle = Utils.hslToRgbString((hue + i * 15) % 360, Utils.clamp(floraPalette.saturation - 10, 50, 90), petalLightness);
+        ctx.fill();
+
+        // Add a highlight/edge
+        ctx.strokeStyle = Utils.hslToRgbString((hue + i * 15 + 20) % 360, floraPalette.saturation, petalLightness + 15);
+        ctx.lineWidth = 1; // Pixel art line
+        ctx.stroke();
+    }
+}
 
 function drawFlatCapMushroom(plant, screenX, hue) {
     const stalkHeight = plant.size * Utils.randomFloat(0.8, 1.2);
@@ -1369,10 +1445,9 @@ function spawnBoulder(mainSceneScrollX) {
     return boulderData;
 }
 
-function drawSingleBoulderComponent(centerX, componentBaseY, width, height, shapeSeed, baseHue, baseSaturation, baseLightness) {
+function drawSingleBoulderComponent(centerX, componentBaseY, width, height, shapeSeed, baseHue, baseSaturation, baseLightness, isForeground = false) { // Added default for isForeground
     // componentBaseY is the y-coordinate of the bottom of this component.
     // We draw from componentBaseY - height up to componentBaseY.
-    const startDrawX = Math.floor(centerX - width / 2);
     const endDrawX = Math.ceil(centerX + width / 2);
     const componentTopY = Math.floor(componentBaseY - height);
     const componentBottomY = Math.ceil(componentBaseY);
@@ -1385,13 +1460,27 @@ function drawSingleBoulderComponent(centerX, componentBaseY, width, height, shap
             const dy = (py - (componentBaseY - height / 2)) / (height / 2); // distance from component's own center
             const dist = dx * dx + dy * dy;
 
+            let currentShapeNoiseFactor = 0.6;
+            let currentBaseLightness = baseLightness;
+            let currentBaseSaturation = baseSaturation;
+            let textureHueShift = 0;
+
+            if (isForeground) {
+                currentShapeNoiseFactor = 0.85; // More irregular
+                currentBaseLightness = Math.min(baseLightness + 15, 70); // Brighter
+                currentBaseSaturation = Math.min(baseSaturation + 30, 100); // More saturated
+                textureHueShift = (PerlinNoise.noise(px * 0.05 + shapeSeed + 200, py * 0.05 + shapeSeed + 200) * 40) - 20; // -20 to +20 hue shift
+            }
+
             const shapeNoise = PerlinNoise.noise(px * 0.1 + shapeSeed, py * 0.1 + shapeSeed);
-            // Increased noise influence for weirder shapes: 0.5 (was 0.4)
-            if (dist < 0.7 + shapeNoise * 0.6) {
-                const textureNoise = PerlinNoise.noise(px * 0.2 + shapeSeed + 100, py * 0.2 + shapeSeed + 100, masterTime * 0.05);
+            if (dist < 0.7 + shapeNoise * currentShapeNoiseFactor) {
+                const textureNoiseVal = PerlinNoise.noise(px * 0.2 + shapeSeed + 100, py * 0.2 + shapeSeed + 100, masterTime * 0.05);
                 // Wider lightness variation for texture
-                const L = Utils.clamp(baseLightness + (textureNoise * 30 - 15), 5, 60);
-                ctx.fillStyle = Utils.hslToRgbString(baseHue, baseSaturation, L);
+                const L = Utils.clamp(currentBaseLightness + (textureNoiseVal * 30 - 15) + (isForeground ? 5 : 0), 10, (isForeground ? 85 : 60));
+                const S = Utils.clamp(currentBaseSaturation + (isForeground ? Utils.randomInt(-10,10) : 0), (isForeground? 40:20), 100);
+                const H = (baseHue + (isForeground ? textureHueShift : 0) + 360) % 360;
+
+                ctx.fillStyle = Utils.hslToRgbString(H, S, L);
                 ctx.fillRect(px, py, 1, 1);
             }
         }
@@ -1408,7 +1497,8 @@ function drawBoulderShape(b, screenX) {
 
     // Draw main boulder component
     // b.y is the base of the main boulder component.
-    drawSingleBoulderComponent(mainBoulderCenterX, b.y, b.width, b.height, b.shapeSeed, baseBoulderHue, baseBoulderSaturation, baseBoulderLightness);
+    const isFg = !!b.isForeground; // Ensure boolean
+    drawSingleBoulderComponent(mainBoulderCenterX, b.y, b.width, b.height, b.shapeSeed, baseBoulderHue, baseBoulderSaturation, baseBoulderLightness, isFg);
 
     // Draw sub-boulders
     b.subBoulders.forEach(sub => {
@@ -1417,7 +1507,8 @@ function drawBoulderShape(b, screenX) {
         // A positive sub.offsetY means it's slightly lower (further down on screen) than main boulder's base if desired,
         // or higher if negative. For boulders, usually want them at or slightly above main base.
         const subBaseY = b.y + sub.offsetY;
-        drawSingleBoulderComponent(subCenterX, subBaseY, sub.width, sub.height, sub.shapeSeed, baseBoulderHue, baseBoulderSaturation, baseBoulderLightness * 0.9); // Slightly darker
+        // Sub-boulders of a foreground boulder are also considered foreground for rendering effects
+        drawSingleBoulderComponent(subCenterX, subBaseY, sub.width, sub.height, sub.shapeSeed, baseBoulderHue, baseBoulderSaturation, baseBoulderLightness * 0.9, isFg); // Slightly darker
     });
 }
 
@@ -1574,6 +1665,9 @@ function drawFgFlora(currentFgScrollX) {
                 break;
             case PLANT_TYPES.CRYSTAL_CLUSTER:
                 drawCrystalCluster(p, screenX, dynamicHue);
+                break;
+            case PLANT_TYPES.PULSATING_CRYSTAL_FLOWER:
+                drawPulsatingCrystalFlower(p, screenX, dynamicHue);
                 break;
             default:
                 // Adjusted default drawing to use p.size directly without scaling for consistency
