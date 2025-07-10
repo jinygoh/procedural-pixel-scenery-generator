@@ -197,6 +197,84 @@ function drawPsychedelicSky(skyScrollX, deltaTime) {
     }
 }
 
+function drawSpikyTendrilPod(plant, screenX, hue) {
+    const baseSize = plant.size; // Foreground plants are already spawned larger
+    const screenY = Math.floor(plant.y + baseSize); // Base of the plant
+
+    const podRadius = baseSize * 0.4;
+    const podX = screenX;
+    const podY = screenY - podRadius * 0.8; // Pod slightly raised
+
+    // Draw Pod
+    ctx.fillStyle = Utils.hslToRgbString(hue, floraPalette.saturation - 10, floraPalette.lightnessMin + 10);
+    ctx.beginPath();
+    ctx.ellipse(podX, podY, podRadius, podRadius * 1.2, 0, 0, Math.PI * 2); // Oval pod
+    ctx.fill();
+
+    // Add some texture/spikes to pod
+    const numPodSpikes = 5;
+    for(let i=0; i < numPodSpikes; i++) {
+        const angle = (i / numPodSpikes) * Math.PI * 2 + masterTime * 0.2;
+        const spikeLength = podRadius * 0.3;
+        const sx1 = podX + Math.cos(angle) * podRadius * 0.8;
+        const sy1 = podY + Math.sin(angle) * podRadius * 1.0; // Oval shape
+        const sx2 = podX + Math.cos(angle) * (podRadius + spikeLength);
+        const sy2 = podY + Math.sin(angle) * (podRadius * 1.2 + spikeLength);
+
+        ctx.strokeStyle = Utils.hslToRgbString(hue, floraPalette.saturation, floraPalette.lightnessMax -10);
+        ctx.beginPath();
+        ctx.moveTo(sx1, sy1);
+        ctx.lineTo(sx2, sy2);
+        ctx.stroke();
+    }
+
+
+    // Spiky Tendrils
+    const numTendrils = 3 + Math.floor(Math.sin(masterTime * 0.5 + plant.id) * 2); // 3 to 5 tendrils
+    const tendrilLengthBase = baseSize * 1.2;
+
+    for (let i = 0; i < numTendrils; i++) {
+        const angleVariance = (i - (numTendrils -1) / 2) * 0.6; // Spread them out
+        const baseAngle = -Math.PI / 2 + angleVariance + Math.sin(masterTime * 0.8 + plant.id + i) * 0.2; // Base upward angle + sway
+
+        let currentX = podX;
+        let currentY = podY - podRadius * 0.5; // Start from top-ish part of pod
+        const segmentLength = 3; // pixels per segment
+
+        ctx.beginPath();
+        ctx.moveTo(currentX, currentY);
+
+        const segments = Math.floor(tendrilLengthBase / segmentLength);
+        for(let j=0; j < segments; j++) {
+            const sway = Math.sin(masterTime * 2.5 + plant.id + i * 0.5 + j * 0.3) * (0.3 + j * 0.02); // Increasing sway
+            const currentAngle = baseAngle + sway;
+            const nextX = currentX + Math.cos(currentAngle) * segmentLength;
+            const nextY = currentY + Math.sin(currentAngle) * segmentLength;
+
+            ctx.lineTo(nextX, nextY);
+            currentX = nextX;
+            currentY = nextY;
+
+            // Add a spike at segment ends
+            if (j % 2 === 0 && j < segments -1) { // Every other segment, not the very tip
+                const spikeAngle = currentAngle + Math.PI / 2 * (j % 4 === 0 ? 1: -1);
+                const spikeLength = baseSize * 0.15;
+                ctx.lineTo(currentX + Math.cos(spikeAngle) * spikeLength, currentY + Math.sin(spikeAngle) * spikeLength);
+                ctx.moveTo(currentX, currentY); // Move back to tendril path
+            }
+        }
+        // Tip of tendril - make it sharp
+        const tipAngle = baseAngle + Math.sin(masterTime * 2.5 + plant.id + i * 0.5 + segments * 0.3) * (0.3 + segments * 0.02);
+        ctx.lineTo(currentX + Math.cos(tipAngle) * segmentLength * 1.5, currentY + Math.sin(tipAngle) * segmentLength * 1.5);
+
+
+        const tendrilLightness = Utils.lerp(floraPalette.lightnessMax, floraPalette.lightnessMin + 20, i / numTendrils);
+        ctx.strokeStyle = Utils.hslToRgbString((hue + 30 + i * 10) % 360, floraPalette.saturation, tendrilLightness);
+        ctx.lineWidth = Math.max(1, Math.floor(baseSize / 15)); // Thinner tendrils
+        ctx.stroke();
+    }
+}
+
 // --- Stars Layer ---
 let stars = [];
 const NUM_STARS = 150;
@@ -506,7 +584,9 @@ const PLANT_TYPES = {
     GLOW_ORB_STALK: 'GLOW_ORB_STALK',
     CRYSTAL_CLUSTER: 'CRYSTAL_CLUSTER',
     FLAT_CAP_MUSHROOM: 'FLAT_CAP_MUSHROOM',
-    TENDRIL_PLANT: 'TENDRIL_PLANT'
+    TENDRIL_PLANT: 'TENDRIL_PLANT',
+    PULSATING_CRYSTAL_FLOWER: 'PULSATING_CRYSTAL_FLOWER',
+    SPIKY_TENDRIL_POD: 'SPIKY_TENDRIL_POD'
 };
 
 // Flora color palette, evolves over time.
@@ -568,7 +648,8 @@ function spawnPlant(mainSceneScrollX) {
     const terrainSurfaceY = getTerrainHeightAt(worldX, mainSceneScrollX);
 
     // Avoid spawning plants too low or too high on sharp peaks.
-    if (terrainSurfaceY > RENDER_HEIGHT - 10 || terrainSurfaceY < RENDER_HEIGHT * 0.40) { // Keep this threshold
+    // RENDER_HEIGHT * 0.65 is 240 * 0.65 = 156. Plants won't spawn if terrain Y is less than 156 (higher on screen).
+    if (terrainSurfaceY > RENDER_HEIGHT - 10 || terrainSurfaceY < RENDER_HEIGHT * 0.65) {
          return null;
     }
 
@@ -601,6 +682,11 @@ function spawnPlant(mainSceneScrollX) {
         return null; // Don't spawn normal plants in river
     }
 
+    // Ensure plant spawns relatively close to the river's Y level
+    const MAX_Y_DIST_FROM_RIVER_PLANT = 25; // Max vertical distance from river center
+    if (Math.abs(terrainSurfaceY - riverCenterY) > MAX_Y_DIST_FROM_RIVER_PLANT) {
+        return null; // Too far vertically from the river
+    }
 
     const plantTypeKeys = Object.keys(PLANT_TYPES);
     const type = Utils.randomElement(plantTypeKeys);
@@ -685,6 +771,81 @@ function drawFlora(currentScrollX) {
 
 // --- Individual Plant Drawing Functions ---
 
+function drawPulsatingCrystalFlower(plant, screenX, hue) {
+    const baseSize = plant.size; // Foreground plants are already spawned larger
+    const screenY = Math.floor(plant.y + baseSize); // Base of the plant
+
+    const numPetals = 5;
+    const petalLengthBase = baseSize * 0.8;
+    const petalWidthBase = baseSize * 0.3;
+
+    const pulseCycle = masterTime * 1.5 + plant.id; // For animation timing
+    const glowPulse = (Math.sin(pulseCycle) + 1) / 2; // 0 to 1
+    const openFactor = Utils.mapRange(Math.sin(pulseCycle * 0.7), -1, 1, 0.5, 1); // Petals open and close
+
+    // Central Orb/Core
+    const coreRadius = baseSize * 0.25 * (0.8 + glowPulse * 0.4); // Pulsating core
+    const coreX = screenX;
+    const coreY = screenY - baseSize * 0.7;
+    const coreLightness = Utils.lerp(70, 95, glowPulse);
+    ctx.fillStyle = Utils.hslToRgbString(hue, floraPalette.saturation, coreLightness);
+
+    for (let dx = -Math.floor(coreRadius); dx <= Math.floor(coreRadius); dx++) {
+        for (let dy = -Math.floor(coreRadius); dy <= Math.floor(coreRadius); dy++) {
+            if (dx*dx + dy*dy <= coreRadius*coreRadius) {
+                if (coreX + dx >=0 && coreX + dx < RENDER_WIDTH && coreY + dy >=0 && coreY + dy < RENDER_HEIGHT) {
+                    ctx.fillRect(coreX + dx, coreY + dy, 1, 1);
+                }
+            }
+        }
+    }
+
+    // Crystalline Petals
+    for (let i = 0; i < numPetals; i++) {
+        const angle = (i / numPetals) * (Math.PI * 2) + (masterTime * 0.05); // Slow rotation
+
+        const petalLength = petalLengthBase * openFactor;
+        const petalWidth = petalWidthBase * Utils.mapRange(openFactor, 0.5, 1, 0.7, 1);
+
+        const tipX = coreX + Math.cos(angle) * petalLength;
+        const tipY = coreY + Math.sin(angle) * petalLength;
+
+        const petalLightness = Utils.lerp(floraPalette.lightnessMin, floraPalette.lightnessMax, (i % 2 === 0 ? 0.3 : 0.7) + glowPulse * 0.2);
+
+        ctx.beginPath();
+        ctx.moveTo(coreX, coreY);
+
+        // Control points for a slightly curved, sharp petal
+        const controlOffsetX1 = Math.cos(angle + Math.PI / 2) * petalWidth * 0.5;
+        const controlOffsetY1 = Math.sin(angle + Math.PI / 2) * petalWidth * 0.5;
+        const controlPointX1 = coreX + Math.cos(angle) * petalLength * 0.33 + controlOffsetX1;
+        const controlPointY1 = coreY + Math.sin(angle) * petalLength * 0.33 + controlOffsetY1;
+
+        const controlOffsetX2 = Math.cos(angle - Math.PI / 2) * petalWidth * 0.5;
+        const controlOffsetY2 = Math.sin(angle - Math.PI / 2) * petalWidth * 0.5;
+        const controlPointX2 = coreX + Math.cos(angle) * petalLength * 0.66 + controlOffsetX2;
+        const controlPointY2 = coreY + Math.sin(angle) * petalLength * 0.66 + controlOffsetY2;
+
+        ctx.quadraticCurveTo(controlPointX1, controlPointY1, tipX, tipY);
+        ctx.quadraticCurveTo(controlPointX2, controlPointY2, coreX, coreY);
+
+        ctx.closePath();
+
+        // For pixel art, filling pixel by pixel within this path would be better,
+        // but for simplicity and distinctness, a standard fill is used.
+        // To make it more "pixel-arty" without complex scanline conversion:
+        // one could draw multiple lines or small rects along the petal's axis.
+        // For now, let's use a solid fill for the crystal effect.
+        ctx.fillStyle = Utils.hslToRgbString((hue + i * 15) % 360, Utils.clamp(floraPalette.saturation - 10, 50, 90), petalLightness);
+        ctx.fill();
+
+        // Add a highlight/edge
+        ctx.strokeStyle = Utils.hslToRgbString((hue + i * 15 + 20) % 360, floraPalette.saturation, petalLightness + 15);
+        ctx.lineWidth = 1; // Pixel art line
+        ctx.stroke();
+    }
+}
+
 function drawFlatCapMushroom(plant, screenX, hue) {
     const stalkHeight = plant.size * Utils.randomFloat(0.8, 1.2);
     const stalkWidth = Math.max(2, Math.floor(plant.size / 3));
@@ -724,7 +885,7 @@ function drawFlatCapMushroom(plant, screenX, hue) {
 
 function drawTendrilPlant(plant, screenX, hue) {
     const numTendrils = Utils.randomInt(3, 6);
-    const tendrilMaxLength = plant.size * Utils.randomFloat(2.0, 4.0);
+    const tendrilMaxLength = plant.size * Utils.randomFloat(1.0, 2.0); // Reduced tendril length
     const baseScreenY = Math.floor(plant.y + plant.size * 0.7); // Base slightly above ground for root point
 
     for (let i = 0; i < numTendrils; i++) {
@@ -845,7 +1006,7 @@ const FAUNA_OFFSCREEN_BUFFER = 100; // Buffer distance off-screen before despawn
 const FAUNA_TYPES = {
     FLOATER: 'FLOATER',
     BIRD_FLOCKER: 'BIRD_FLOCKER',
-    CRAWLER: 'CRAWLER',
+    // CRAWLER: 'CRAWLER', // Removed CRAWLER
 };
 
 // Fauna color palette, evolves over time.
@@ -917,37 +1078,8 @@ function spawnFauna(currentLayerScrollX) {
         animal.maxSpeed = Utils.randomFloat(20, 35); // Adjusted bird speed
         animal.maxForce = Utils.randomFloat(0.2, 0.6);
         animal.perceptionRadius = Utils.randomFloat(25, 50);
-    } else if (animal.type === FAUNA_TYPES.CRAWLER) {
-        animal.size = Utils.randomFloat(2, 4); // Segment size
-        animal.numSegments = Utils.randomInt(5, 10);
-        animal.segmentSpacing = animal.size * 0.8;
-        animal.segments = []; // Array to store [x,y] for each segment relative to animal.worldX, animal.y
-        animal.y = getTerrainHeightAt(animal.worldX, currentLayerScrollX); // Place on terrain
-
-        // Check if valid spawn location (not in river or too steep/high)
-        if (animal.y > RENDER_HEIGHT - 5 || animal.y < RENDER_HEIGHT * 0.40) return null;
-
-        const slopeCheckOffset = 2;
-        const heightLeft = getTerrainHeightAt(animal.worldX - slopeCheckOffset, currentLayerScrollX);
-        const heightRight = getTerrainHeightAt(animal.worldX + slopeCheckOffset, currentLayerScrollX);
-        if (Math.abs(animal.y - heightLeft) > 4 || Math.abs(animal.y - heightRight) > 4) return null;
-
-        const riverCenterYNoise = PerlinNoise.noise(animal.worldX * RIVER_NOISE_SCALE, riverPathSeed + masterTime * 0.01);
-        let riverCenterY = RIVER_CENTER_Y_BASE + riverCenterYNoise * RIVER_CENTER_Y_VARIATION;
-        riverCenterY = Math.max(riverCenterY, animal.y + currentRiverWidth * 0.3);
-        riverCenterY = Math.min(riverCenterY, RENDER_HEIGHT - currentRiverWidth);
-        const halfRiverWidth = currentRiverWidth / 2;
-        const riverTopEdge = riverCenterY - halfRiverWidth;
-        const riverBedFinalY = Math.max(animal.y + RIVER_BED_DEPTH, riverTopEdge);
-        if (animal.y >= riverTopEdge && animal.y <= riverBedFinalY + halfRiverWidth*2) return null;
-
-        for (let i = 0; i < animal.numSegments; i++) {
-            animal.segments.push({ x: -i * animal.segmentSpacing, y: 0 }); // Initial straight line behind head
-        }
-        animal.vx = Utils.randomFloat(5, 15) * (spawnFromLeft ? 1 : -1); // Crawlers are slower
-        animal.phaseOffset = Utils.randomFloat(0, Math.PI * 2); // For body undulation
     }
-
+    // Removed CRAWLER else if block
     return animal;
 }
 
@@ -1104,9 +1236,6 @@ function drawFauna(currentScrollX, deltaTime) {
             if (animal.y > RENDER_HEIGHT * 0.5 && animal.vy > 0) { animal.vy *= -0.5; animal.y = RENDER_HEIGHT * 0.5; } // Birds stay in upper half
 
             animal.wingPhase += speed * dt * 0.5; // Flapping speed based on actual speed
-        }
-        // TODO: Add CRAWLER movement logic (stick to terrain).
-            animal.wingPhase += speed * dt * 0.5; // Flapping speed based on actual speed
         } else if (animal.type === FAUNA_TYPES.CRAWLER) {
             const headWorldX = animal.worldX;
             const headWorldY = getTerrainHeightAt(headWorldX, currentScrollX) + Math.sin(masterTime * 10 + animal.phaseOffset) * animal.size * 0.3; // Undulation for head
@@ -1200,37 +1329,14 @@ function drawFauna(currentScrollX, deltaTime) {
             case FAUNA_TYPES.BIRD_FLOCKER:
                 drawBirdFlockerShape(animal, screenX, dynamicHue);
                 break;
-            case FAUNA_TYPES.CRAWLER:
-                drawCrawlerShape(animal, currentScrollX, dynamicHue); // Pass currentScrollX for segment drawing
-                break;
+            // Removed CRAWLER case
         }
     }
 }
 
 // --- Individual Fauna Drawing Functions ---
 
-function drawCrawlerShape(crawler, currentScrollX, hue) {
-    const segmentSize = Math.max(1, Math.floor(crawler.size));
-    for (let i = 0; i < crawler.numSegments; i++) {
-        const segment = crawler.segments[i];
-        const segScreenX = Math.floor(segment.x - currentScrollX);
-        const segScreenY = Math.floor(segment.y);
-
-        if (segScreenX + segmentSize < 0 || segScreenX - segmentSize > RENDER_WIDTH ||
-            segScreenY + segmentSize < 0 || segScreenY - segmentSize > RENDER_HEIGHT) {
-            continue;
-        }
-
-        const L = Utils.lerp(faunaPalette.lightnessMin, faunaPalette.lightnessMax, (i / crawler.numSegments) * 0.5 + 0.25 + Math.sin(masterTime * 5 + i*0.5 + crawler.phaseOffset)*0.1);
-        const S = faunaPalette.saturation;
-        ctx.fillStyle = Utils.hslToRgbString((hue + i * 5) % 360, S, Utils.clamp(L, 30, 80) );
-
-        // Draw segment as a circle
-        ctx.beginPath();
-        ctx.arc(segScreenX, segScreenY, segmentSize, 0, Math.PI * 2);
-        ctx.fill();
-    }
-}
+// Removed drawCrawlerShape function
 
 /** Draws a Bird Flocker shape. Simple V-shape with animated wings. */
 function drawBirdFlockerShape(bird, screenX, hue) {
@@ -1353,7 +1459,8 @@ function spawnBoulder(mainSceneScrollX) {
 
     const terrainSurfaceY = getTerrainHeightAt(worldX, mainSceneScrollX);
     // Avoid spawning boulders too low or too high on sharp peaks for main landscape.
-    if (terrainSurfaceY > RENDER_HEIGHT - 5 || terrainSurfaceY < RENDER_HEIGHT * 0.40) {
+    // RENDER_HEIGHT * 0.65 is 240 * 0.65 = 156. Boulders won't spawn if terrain Y is less than 156 (higher on screen).
+    if (terrainSurfaceY > RENDER_HEIGHT - 5 || terrainSurfaceY < RENDER_HEIGHT * 0.65) {
         return null;
     }
 
@@ -1377,7 +1484,13 @@ function spawnBoulder(mainSceneScrollX) {
     const riverTopEdge = riverCenterY - halfRiverWidth;
     const riverBedFinalY = Math.max(terrainSurfaceY + RIVER_BED_DEPTH, riverTopEdge);
     if (terrainSurfaceY >= riverTopEdge && terrainSurfaceY <= riverBedFinalY + halfRiverWidth * 2) {
-        return null;
+        return null; // Don't spawn boulders in the river
+    }
+
+    // Ensure boulder spawns relatively close to the river's Y level
+    const MAX_Y_DIST_FROM_RIVER_BOULDER = 25; // Max vertical distance from river center
+    if (Math.abs(terrainSurfaceY - riverCenterY) > MAX_Y_DIST_FROM_RIVER_BOULDER) {
+        return null; // Too far vertically from the river
     }
 
     const size = Utils.randomFloat(BOULDER_MIN_SIZE, BOULDER_MAX_SIZE);
@@ -1411,10 +1524,10 @@ function spawnBoulder(mainSceneScrollX) {
     return boulderData;
 }
 
-function drawSingleBoulderComponent(centerX, componentBaseY, width, height, shapeSeed, baseHue, baseSaturation, baseLightness) {
+function drawSingleBoulderComponent(centerX, componentBaseY, width, height, shapeSeed, baseHue, baseSaturation, baseLightness, isForeground = false) { // Added default for isForeground
     // componentBaseY is the y-coordinate of the bottom of this component.
     // We draw from componentBaseY - height up to componentBaseY.
-    const startDrawX = Math.floor(centerX - width / 2);
+    const startDrawX = Math.floor(centerX - width / 2); // Ensure single definition
     const endDrawX = Math.ceil(centerX + width / 2);
     const componentTopY = Math.floor(componentBaseY - height);
     const componentBottomY = Math.ceil(componentBaseY);
@@ -1427,14 +1540,50 @@ function drawSingleBoulderComponent(centerX, componentBaseY, width, height, shap
             const dy = (py - (componentBaseY - height / 2)) / (height / 2); // distance from component's own center
             const dist = dx * dx + dy * dy;
 
+            let currentShapeNoiseFactor = 0.6;
+            let currentBaseLightness = baseLightness;
+            let currentBaseSaturation = baseSaturation;
+            let textureHueShift = 0;
+
+            if (isForeground) {
+                currentShapeNoiseFactor = 0.85; // More irregular
+                currentBaseLightness = Math.min(baseLightness + 15, 70); // Brighter
+                currentBaseSaturation = Math.min(baseSaturation + 30, 100); // More saturated
+                textureHueShift = (PerlinNoise.noise(px * 0.05 + shapeSeed + 200, py * 0.05 + shapeSeed + 200) * 40) - 20; // -20 to +20 hue shift
+            }
+
             const shapeNoise = PerlinNoise.noise(px * 0.1 + shapeSeed, py * 0.1 + shapeSeed);
-            // Increased noise influence for weirder shapes: 0.5 (was 0.4)
-            if (dist < 0.7 + shapeNoise * 0.6) {
-                const textureNoise = PerlinNoise.noise(px * 0.2 + shapeSeed + 100, py * 0.2 + shapeSeed + 100, masterTime * 0.05);
+            if (dist < 0.7 + shapeNoise * currentShapeNoiseFactor) {
+                const textureNoiseVal = PerlinNoise.noise(px * 0.2 + shapeSeed + 100, py * 0.2 + shapeSeed + 100, masterTime * 0.05);
                 // Wider lightness variation for texture
-                const L = Utils.clamp(baseLightness + (textureNoise * 30 - 15), 5, 60);
-                ctx.fillStyle = Utils.hslToRgbString(baseHue, baseSaturation, L);
+                const L = Utils.clamp(currentBaseLightness + (textureNoiseVal * 30 - 15) + (isForeground ? 5 : 0), 10, (isForeground ? 85 : 60));
+                const S = Utils.clamp(currentBaseSaturation + (isForeground ? Utils.randomInt(-10,10) : 0), (isForeground? 40:20), 100);
+                const H = (baseHue + (isForeground ? textureHueShift : 0) + 360) % 360;
+
+                ctx.fillStyle = Utils.hslToRgbString(H, S, L);
                 ctx.fillRect(px, py, 1, 1);
+            }
+        }
+    }
+
+    if (isForeground) {
+        const corePulse = (Math.sin(masterTime * 2.0 + shapeSeed) + 1) / 2; // 0 to 1 pulsation
+        const coreRadius = Math.max(1, width * 0.15 * (0.7 + corePulse * 0.6));
+        const coreLightness = Utils.lerp(70, 95, corePulse);
+        const coreSaturation = 100;
+        const coreHue = (baseHue + 90 + Utils.randomInt(-20, 20)) % 360; // Contrasting hue
+
+        // Draw the core
+        ctx.fillStyle = Utils.hslToRgbString(coreHue, coreSaturation, coreLightness);
+        const coreDrawX = Math.floor(centerX - coreRadius / 2);
+        const coreDrawY = Math.floor(componentBaseY - height/2 - coreRadius / 2); // Centered more or less
+
+        // Simple square core for pixel art style
+        for(let cx = 0; cx < Math.floor(coreRadius); cx++) {
+            for(let cy = 0; cy < Math.floor(coreRadius); cy++) {
+                 if (coreDrawX + cx >=0 && coreDrawX + cx < RENDER_WIDTH && coreDrawY + cy >=0 && coreDrawY + cy < RENDER_HEIGHT) {
+                     ctx.fillRect(coreDrawX + cx, coreDrawY + cy, 1, 1);
+                 }
             }
         }
     }
@@ -1450,7 +1599,8 @@ function drawBoulderShape(b, screenX) {
 
     // Draw main boulder component
     // b.y is the base of the main boulder component.
-    drawSingleBoulderComponent(mainBoulderCenterX, b.y, b.width, b.height, b.shapeSeed, baseBoulderHue, baseBoulderSaturation, baseBoulderLightness);
+    const isFg = !!b.isForeground; // Ensure boolean
+    drawSingleBoulderComponent(mainBoulderCenterX, b.y, b.width, b.height, b.shapeSeed, baseBoulderHue, baseBoulderSaturation, baseBoulderLightness, isFg);
 
     // Draw sub-boulders
     b.subBoulders.forEach(sub => {
@@ -1459,7 +1609,8 @@ function drawBoulderShape(b, screenX) {
         // A positive sub.offsetY means it's slightly lower (further down on screen) than main boulder's base if desired,
         // or higher if negative. For boulders, usually want them at or slightly above main base.
         const subBaseY = b.y + sub.offsetY;
-        drawSingleBoulderComponent(subCenterX, subBaseY, sub.width, sub.height, sub.shapeSeed, baseBoulderHue, baseBoulderSaturation, baseBoulderLightness * 0.9); // Slightly darker
+        // Sub-boulders of a foreground boulder are also considered foreground for rendering effects
+        drawSingleBoulderComponent(subCenterX, subBaseY, sub.width, sub.height, sub.shapeSeed, baseBoulderHue, baseBoulderSaturation, baseBoulderLightness * 0.9, isFg); // Slightly darker
     });
 }
 
@@ -1566,7 +1717,7 @@ function spawnFgPlant(currentFgScrollX) {
         type: type,
         worldX: worldX,
         y: terrainY,
-        size: Utils.randomFloat(15, 30), // Larger than main flora
+        size: Utils.randomFloat(10, 20), // Adjusted size for foreground flora
         hue: (floraPalette.baseHue + Utils.randomFloat(-floraPalette.hueSpread, floraPalette.hueSpread)) % 360,
         createdAt: masterTime,
         isForeground: true
@@ -1604,8 +1755,8 @@ function drawFgFlora(currentFgScrollX) {
         // Reuse existing plant drawing functions
         // They might need slight adjustments if foreground plants have unique visual properties
         // or we can pass an 'isForeground' flag to them.
-        const originalSize = p.size;
-        p.size *= 1.5; // Make foreground plants appear larger
+        // const originalSize = p.size; // Removed temporary scaling
+        // p.size *= 1.5; // Make foreground plants appear larger // Removed temporary scaling
 
         switch (p.type) {
             case PLANT_TYPES.TALL_SPIRE:
@@ -1617,11 +1768,18 @@ function drawFgFlora(currentFgScrollX) {
             case PLANT_TYPES.CRYSTAL_CLUSTER:
                 drawCrystalCluster(p, screenX, dynamicHue);
                 break;
+            case PLANT_TYPES.PULSATING_CRYSTAL_FLOWER:
+                drawPulsatingCrystalFlower(p, screenX, dynamicHue);
+                break;
+            case PLANT_TYPES.SPIKY_TENDRIL_POD:
+                drawSpikyTendrilPod(p, screenX, dynamicHue);
+                break;
             default:
+                // Adjusted default drawing to use p.size directly without scaling for consistency
                 ctx.fillStyle = Utils.hslToRgbString(dynamicHue, floraPalette.saturation, Utils.randomElement([60,70]));
                 ctx.fillRect(screenX - Math.floor(p.size/3), Math.floor(p.y - p.size), Math.floor(p.size/1.5), Math.floor(p.size));
         }
-        p.size = originalSize; // Reset size if it was temporarily changed for drawing
+        // p.size = originalSize; // Reset size if it was temporarily changed for drawing // Removed temporary scaling
     }
 }
 
@@ -1643,7 +1801,9 @@ function spawnFgBoulder(currentFgScrollX) {
 
     const yPos = RENDER_HEIGHT - Utils.randomFloat(2, 15); // Near bottom edge
 
-    const size = Utils.randomFloat(BOULDER_MAX_SIZE * 0.8, BOULDER_MAX_SIZE * 1.8); // Larger than typical main boulders
+    // Adjusted size for foreground boulders (was BOULDER_MAX_SIZE * 0.8 to * 1.8, e.g. 9.6 to 21.6)
+    // BOULDER_MIN_SIZE = 4, BOULDER_MAX_SIZE = 12
+    const size = Utils.randomFloat(6, 18); // New range: 6 to 18
     return {
         id: masterTime + Math.random() + 0.2, // ID offset
         worldX: worldX,
@@ -1654,7 +1814,8 @@ function spawnFgBoulder(currentFgScrollX) {
         hueSeed: Utils.randomFloat(0, 360),
         shapeSeed: Utils.randomFloat(1000, 2000), // Different shape seed range
         createdAt: masterTime,
-        isForeground: true
+        isForeground: true,
+        subBoulders: [] // Initialize subBoulders for foreground boulders
     };
 }
 
