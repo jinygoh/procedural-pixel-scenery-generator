@@ -1104,7 +1104,6 @@ function drawFauna(currentScrollX, deltaTime) {
             if (animal.y > RENDER_HEIGHT * 0.5 && animal.vy > 0) { animal.vy *= -0.5; animal.y = RENDER_HEIGHT * 0.5; } // Birds stay in upper half
 
             animal.wingPhase += speed * dt * 0.5; // Flapping speed based on actual speed
-        }
         } else if (animal.type === FAUNA_TYPES.CRAWLER) {
             const headWorldX = animal.worldX;
             const headWorldY = getTerrainHeightAt(headWorldX, currentScrollX) + Math.sin(masterTime * 10 + animal.phaseOffset) * animal.size * 0.3; // Undulation for head
