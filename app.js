@@ -1563,7 +1563,7 @@ function spawnFgPlant(currentFgScrollX) {
         type: type,
         worldX: worldX,
         y: terrainY,
-        size: Utils.randomFloat(15, 30), // Larger than main flora
+        size: Utils.randomFloat(10, 20), // Adjusted size for foreground flora
         hue: (floraPalette.baseHue + Utils.randomFloat(-floraPalette.hueSpread, floraPalette.hueSpread)) % 360,
         createdAt: masterTime,
         isForeground: true
@@ -1601,8 +1601,8 @@ function drawFgFlora(currentFgScrollX) {
         // Reuse existing plant drawing functions
         // They might need slight adjustments if foreground plants have unique visual properties
         // or we can pass an 'isForeground' flag to them.
-        const originalSize = p.size;
-        p.size *= 1.5; // Make foreground plants appear larger
+        // const originalSize = p.size; // Removed temporary scaling
+        // p.size *= 1.5; // Make foreground plants appear larger // Removed temporary scaling
 
         switch (p.type) {
             case PLANT_TYPES.TALL_SPIRE:
@@ -1615,10 +1615,11 @@ function drawFgFlora(currentFgScrollX) {
                 drawCrystalCluster(p, screenX, dynamicHue);
                 break;
             default:
+                // Adjusted default drawing to use p.size directly without scaling for consistency
                 ctx.fillStyle = Utils.hslToRgbString(dynamicHue, floraPalette.saturation, Utils.randomElement([60,70]));
                 ctx.fillRect(screenX - Math.floor(p.size/3), Math.floor(p.y - p.size), Math.floor(p.size/1.5), Math.floor(p.size));
         }
-        p.size = originalSize; // Reset size if it was temporarily changed for drawing
+        // p.size = originalSize; // Reset size if it was temporarily changed for drawing // Removed temporary scaling
     }
 }
 
@@ -1640,7 +1641,9 @@ function spawnFgBoulder(currentFgScrollX) {
 
     const yPos = RENDER_HEIGHT - Utils.randomFloat(2, 15); // Near bottom edge
 
-    const size = Utils.randomFloat(BOULDER_MAX_SIZE * 0.8, BOULDER_MAX_SIZE * 1.8); // Larger than typical main boulders
+    // Adjusted size for foreground boulders (was BOULDER_MAX_SIZE * 0.8 to * 1.8, e.g. 9.6 to 21.6)
+    // BOULDER_MIN_SIZE = 4, BOULDER_MAX_SIZE = 12
+    const size = Utils.randomFloat(6, 18); // New range: 6 to 18
     return {
         id: masterTime + Math.random() + 0.2, // ID offset
         worldX: worldX,
@@ -1651,7 +1654,8 @@ function spawnFgBoulder(currentFgScrollX) {
         hueSeed: Utils.randomFloat(0, 360),
         shapeSeed: Utils.randomFloat(1000, 2000), // Different shape seed range
         createdAt: masterTime,
-        isForeground: true
+        isForeground: true,
+        subBoulders: [] // Initialize subBoulders for foreground boulders
     };
 }
 
