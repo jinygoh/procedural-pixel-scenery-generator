@@ -197,6 +197,84 @@ function drawPsychedelicSky(skyScrollX, deltaTime) {
     }
 }
 
+function drawSpikyTendrilPod(plant, screenX, hue) {
+    const baseSize = plant.size; // Foreground plants are already spawned larger
+    const screenY = Math.floor(plant.y + baseSize); // Base of the plant
+
+    const podRadius = baseSize * 0.4;
+    const podX = screenX;
+    const podY = screenY - podRadius * 0.8; // Pod slightly raised
+
+    // Draw Pod
+    ctx.fillStyle = Utils.hslToRgbString(hue, floraPalette.saturation - 10, floraPalette.lightnessMin + 10);
+    ctx.beginPath();
+    ctx.ellipse(podX, podY, podRadius, podRadius * 1.2, 0, 0, Math.PI * 2); // Oval pod
+    ctx.fill();
+
+    // Add some texture/spikes to pod
+    const numPodSpikes = 5;
+    for(let i=0; i < numPodSpikes; i++) {
+        const angle = (i / numPodSpikes) * Math.PI * 2 + masterTime * 0.2;
+        const spikeLength = podRadius * 0.3;
+        const sx1 = podX + Math.cos(angle) * podRadius * 0.8;
+        const sy1 = podY + Math.sin(angle) * podRadius * 1.0; // Oval shape
+        const sx2 = podX + Math.cos(angle) * (podRadius + spikeLength);
+        const sy2 = podY + Math.sin(angle) * (podRadius * 1.2 + spikeLength);
+
+        ctx.strokeStyle = Utils.hslToRgbString(hue, floraPalette.saturation, floraPalette.lightnessMax -10);
+        ctx.beginPath();
+        ctx.moveTo(sx1, sy1);
+        ctx.lineTo(sx2, sy2);
+        ctx.stroke();
+    }
+
+
+    // Spiky Tendrils
+    const numTendrils = 3 + Math.floor(Math.sin(masterTime * 0.5 + plant.id) * 2); // 3 to 5 tendrils
+    const tendrilLengthBase = baseSize * 1.2;
+
+    for (let i = 0; i < numTendrils; i++) {
+        const angleVariance = (i - (numTendrils -1) / 2) * 0.6; // Spread them out
+        const baseAngle = -Math.PI / 2 + angleVariance + Math.sin(masterTime * 0.8 + plant.id + i) * 0.2; // Base upward angle + sway
+
+        let currentX = podX;
+        let currentY = podY - podRadius * 0.5; // Start from top-ish part of pod
+        const segmentLength = 3; // pixels per segment
+
+        ctx.beginPath();
+        ctx.moveTo(currentX, currentY);
+
+        const segments = Math.floor(tendrilLengthBase / segmentLength);
+        for(let j=0; j < segments; j++) {
+            const sway = Math.sin(masterTime * 2.5 + plant.id + i * 0.5 + j * 0.3) * (0.3 + j * 0.02); // Increasing sway
+            const currentAngle = baseAngle + sway;
+            const nextX = currentX + Math.cos(currentAngle) * segmentLength;
+            const nextY = currentY + Math.sin(currentAngle) * segmentLength;
+
+            ctx.lineTo(nextX, nextY);
+            currentX = nextX;
+            currentY = nextY;
+
+            // Add a spike at segment ends
+            if (j % 2 === 0 && j < segments -1) { // Every other segment, not the very tip
+                const spikeAngle = currentAngle + Math.PI / 2 * (j % 4 === 0 ? 1: -1);
+                const spikeLength = baseSize * 0.15;
+                ctx.lineTo(currentX + Math.cos(spikeAngle) * spikeLength, currentY + Math.sin(spikeAngle) * spikeLength);
+                ctx.moveTo(currentX, currentY); // Move back to tendril path
+            }
+        }
+        // Tip of tendril - make it sharp
+        const tipAngle = baseAngle + Math.sin(masterTime * 2.5 + plant.id + i * 0.5 + segments * 0.3) * (0.3 + segments * 0.02);
+        ctx.lineTo(currentX + Math.cos(tipAngle) * segmentLength * 1.5, currentY + Math.sin(tipAngle) * segmentLength * 1.5);
+
+
+        const tendrilLightness = Utils.lerp(floraPalette.lightnessMax, floraPalette.lightnessMin + 20, i / numTendrils);
+        ctx.strokeStyle = Utils.hslToRgbString((hue + 30 + i * 10) % 360, floraPalette.saturation, tendrilLightness);
+        ctx.lineWidth = Math.max(1, Math.floor(baseSize / 15)); // Thinner tendrils
+        ctx.stroke();
+    }
+}
+
 // --- Stars Layer ---
 let stars = [];
 const NUM_STARS = 150;
@@ -507,7 +585,8 @@ const PLANT_TYPES = {
     CRYSTAL_CLUSTER: 'CRYSTAL_CLUSTER',
     FLAT_CAP_MUSHROOM: 'FLAT_CAP_MUSHROOM',
     TENDRIL_PLANT: 'TENDRIL_PLANT',
-    PULSATING_CRYSTAL_FLOWER: 'PULSATING_CRYSTAL_FLOWER'
+    PULSATING_CRYSTAL_FLOWER: 'PULSATING_CRYSTAL_FLOWER',
+    SPIKY_TENDRIL_POD: 'SPIKY_TENDRIL_POD'
 };
 
 // Flora color palette, evolves over time.
@@ -569,8 +648,8 @@ function spawnPlant(mainSceneScrollX) {
     const terrainSurfaceY = getTerrainHeightAt(worldX, mainSceneScrollX);
 
     // Avoid spawning plants too low or too high on sharp peaks.
-    // RENDER_HEIGHT * 0.55 is 240 * 0.55 = 132. Plants won't spawn if terrain Y is less than 132 (higher on screen).
-    if (terrainSurfaceY > RENDER_HEIGHT - 10 || terrainSurfaceY < RENDER_HEIGHT * 0.55) {
+    // RENDER_HEIGHT * 0.65 is 240 * 0.65 = 156. Plants won't spawn if terrain Y is less than 156 (higher on screen).
+    if (terrainSurfaceY > RENDER_HEIGHT - 10 || terrainSurfaceY < RENDER_HEIGHT * 0.65) {
          return null;
     }
 
@@ -1486,6 +1565,28 @@ function drawSingleBoulderComponent(centerX, componentBaseY, width, height, shap
             }
         }
     }
+
+    if (isForeground) {
+        const corePulse = (Math.sin(masterTime * 2.0 + shapeSeed) + 1) / 2; // 0 to 1 pulsation
+        const coreRadius = Math.max(1, width * 0.15 * (0.7 + corePulse * 0.6));
+        const coreLightness = Utils.lerp(70, 95, corePulse);
+        const coreSaturation = 100;
+        const coreHue = (baseHue + 90 + Utils.randomInt(-20, 20)) % 360; // Contrasting hue
+
+        // Draw the core
+        ctx.fillStyle = Utils.hslToRgbString(coreHue, coreSaturation, coreLightness);
+        const coreDrawX = Math.floor(centerX - coreRadius / 2);
+        const coreDrawY = Math.floor(componentBaseY - height/2 - coreRadius / 2); // Centered more or less
+
+        // Simple square core for pixel art style
+        for(let cx = 0; cx < Math.floor(coreRadius); cx++) {
+            for(let cy = 0; cy < Math.floor(coreRadius); cy++) {
+                 if (coreDrawX + cx >=0 && coreDrawX + cx < RENDER_WIDTH && coreDrawY + cy >=0 && coreDrawY + cy < RENDER_HEIGHT) {
+                     ctx.fillRect(coreDrawX + cx, coreDrawY + cy, 1, 1);
+                 }
+            }
+        }
+    }
 }
 
 function drawBoulderShape(b, screenX) {
@@ -1669,6 +1770,9 @@ function drawFgFlora(currentFgScrollX) {
                 break;
             case PLANT_TYPES.PULSATING_CRYSTAL_FLOWER:
                 drawPulsatingCrystalFlower(p, screenX, dynamicHue);
+                break;
+            case PLANT_TYPES.SPIKY_TENDRIL_POD:
+                drawSpikyTendrilPod(p, screenX, dynamicHue);
                 break;
             default:
                 // Adjusted default drawing to use p.size directly without scaling for consistency
